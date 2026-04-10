@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shot List</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #111;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px;
+  }
+
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 6px; }
+  .subtitle { font-size: 13px; color: #777; margin-bottom: 32px; }
+
+  .drop-zone {
+    width: 100%; max-width: 520px;
+    border: 2px dashed #333; border-radius: 12px;
+    padding: 48px 24px; text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .drop-zone:hover, .drop-zone.dragover { border-color: #4a9eff; background: rgba(74,158,255,0.04); }
+  .drop-zone p { font-size: 14px; color: #888; }
+  .drop-zone p strong { color: #4a9eff; }
+  .drop-zone input { display: none; }
+
+  .results { width: 100%; max-width: 520px; margin-top: 24px; display: none; }
+
+  .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+  .results-header h2 { font-size: 14px; font-weight: 500; color: #aaa; }
+
+  .concept-input { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .concept-input label { font-size: 13px; color: #777; white-space: nowrap; }
+  .concept-input input {
+    flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
+    padding: 8px 12px; color: #e0e0e0; font-family: 'DM Mono', monospace; font-size: 13px; outline: none;
+  }
+  .concept-input input:focus { border-color: #4a9eff; }
+  .concept-input input::placeholder { color: #555; }
+
+  .shot-list {
+    background: #1a1a1a; border-radius: 8px; padding: 16px;
+    font-family: 'DM Mono', monospace; font-size: 13px; line-height: 1.7;
+    white-space: pre-wrap; word-break: break-all; color: #ccc;
+    max-height: 400px; overflow-y: auto;
+  }
+
+  .btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  .btn {
+    background: #222; border: 1px solid #333; color: #ccc;
+    padding: 7px 14px; border-radius: 6px;
+    font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  }
+  .btn:hover { background: #2a2a2a; border-color: #4a9eff; color: #fff; }
+  .btn.copied { border-color: #4aff8b; color: #4aff8b; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn:disabled:hover { background: #222; border-color: #333; color: #ccc; }
+
+  .file-name { font-size: 12px; color: #555; margin-top: 12px; text-align: center; }
+  .count { font-size: 12px; color: #555; }
+  .progress { font-size: 12px; color: #4a9eff; margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+
+<h1>Shot List</h1>
+<p class="subtitle">Drop a project zip to get a list of footage files</p>
+
+<div class="drop-zone" id="dropZone">
+  <p><strong>Click or drag</strong> a .zip file here</p>
+  <input type="file" id="fileInput" accept=".zip">
+</div>
+
+<p class="file-name" id="fileName"></p>
+
+<div class="results" id="results">
+  <div class="concept-input">
+    <label>Concept code:</label>
+    <input type="text" id="conceptCode" placeholder="e.g. ABC-001" oninput="updateOutput()">
+  </div>
+  <div class="results-header">
+    <h2>Footage files <span class="count" id="count"></span></h2>
+    <div class="btn-row">
+      <button class="btn" id="gridBtn" onclick="generateGrid()" disabled>Contact sheet</button>
+      <button class="btn" id="copyBtn" onclick="copyList()" disabled>Enter concept code to copy</button>
+    </div>
+  </div>
+  <div class="shot-list" id="shotList"></div>
+  <p class="progress" id="progress"></p>
+</div>
+
+<script>
+const VIDEO_EXTS = new Set(['mp4','mov','avi','mkv','wmv','flv','webm','m4v','mpg','mpeg','mxf','r3d','braw','ari']);
+const BROWSER_VIDEO_EXTS = new Set(['mp4','mov','webm','m4v','ogg']);
+const AUDIO_EXTS = new Set(['wav','mp3','aac','aif','aiff','flac','ogg','m4a','wma']);
+const IMAGE_EXTS = new Set(['jpg','jpeg','png','tif','tiff','psd','ai','eps','svg','gif','webp','bmp','raw','cr2','nef','dng']);
+const BROWSER_IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','svg']);
+const JUNK_FOLDERS = ['auto-save','adobe premiere pro auto-save','previews','encoded','media cache','proxy','proxies','.thumbnails','.cache','__macosx','.ds_store','peak files','conformed audio'];
+const JUNK_PATTERNS = [/^\./, /^~/, /^thumbs\.db$/i, /^desktop\.ini$/i, /\.pkf$/i, /\.pek$/i, /\.cfa$/i, /\.tmp$/i];
+
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const results = document.getElementById('results');
+const shotList = document.getElementById('shotList');
+const countEl = document.getElementById('count');
+const fileNameEl = document.getElementById('fileName');
+const copyBtn = document.getElementById('copyBtn');
+const gridBtn = document.getElementById('gridBtn');
+const progressEl = document.getElementById('progress');
+
+let currentFiles = [];
+let currentZip = null;
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) processZip(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if (e.target.files.length) processZip(e.target.files[0]); });
+
+async function processZip(file) {
+  if (!file.name.endsWith('.zip')) return;
+  fileNameEl.textContent = file.name;
+  dropZone.querySelector('p').innerHTML = 'Processing...';
+  progressEl.textContent = '';
+
+  try {
+    const zip = await JSZip.loadAsync(file);
+    currentZip = zip;
+    const footage = [];
+
+    zip.forEach((path, entry) => {
+      if (entry.dir) return;
+      const pathLower = path.toLowerCase();
+      if (JUNK_FOLDERS.some(jf => pathLower.includes('/' + jf + '/') || pathLower.startsWith(jf + '/'))) return;
+      const name = path.split('/').pop();
+      if (JUNK_PATTERNS.some(p => p.test(name))) return;
+      const ext = name.split('.').pop().toLowerCase();
+      let type = null;
+      if (VIDEO_EXTS.has(ext)) type = 'video';
+      else if (AUDIO_EXTS.has(ext)) type = 'audio';
+      else if (IMAGE_EXTS.has(ext)) type = 'image';
+      if (type) footage.push({ name, type, ext, path });
+    });
+
+    const order = { video: 0, audio: 1, image: 2 };
+    footage.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name));
+
+    const seen = new Set();
+    currentFiles = footage.filter(f => {
+      if (seen.has(f.name)) return false;
+      seen.add(f.name);
+      return true;
+    });
+
+    updateOutput();
+    results.style.display = 'block';
+    dropZone.querySelector('p').innerHTML = '<strong>Click or drag</strong> a .zip file here';
+  } catch (err) {
+    dropZone.querySelector('p').innerHTML = '<strong>Error reading zip.</strong> Try again.';
+  }
+}
+
+function updateOutput() {
+  const code = document.getElementById('conceptCode').value.trim();
+  const header = code ? `Shots used in ${code}:` : 'Shots used:';
+
+  const video = currentFiles.filter(f => f.type === 'video');
+  const audio = currentFiles.filter(f => f.type === 'audio');
+  const images = currentFiles.filter(f => f.type === 'image');
+
+  let output = header;
+  if (video.length) { output += '\n\nVideo:'; video.forEach(f => output += `\n- ${f.name}`); }
+  if (audio.length) { output += '\n\nAudio:'; audio.forEach(f => output += `\n- ${f.name}`); }
+  if (images.length) { output += '\n\nImages:'; images.forEach(f => output += `\n- ${f.name}`); }
+
+  shotList.textContent = output;
+  countEl.textContent = `(${currentFiles.length})`;
+  copyBtn.textContent = code ? 'Copy for Slack' : 'Enter concept code to copy';
+  copyBtn.disabled = !code;
+  copyBtn.classList.remove('copied');
+
+  const hasVisual = currentFiles.some(f => f.type === 'video' || f.type === 'image');
+  gridBtn.disabled = !code || !hasVisual;
+}
+
+function copyList() {
+  navigator.clipboard.writeText(shotList.textContent).then(() => {
+    copyBtn.textContent = 'Copied';
+    copyBtn.classList.add('copied');
+    setTimeout(() => { copyBtn.textContent = 'Copy for Slack'; copyBtn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// --- Contact sheet ---
+
+function getThumbnailFromVideo(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const video = document.createElement('video');
+    video.muted = true; video.preload = 'auto'; video.playsInline = true;
+    const timeout = setTimeout(() => { URL.revokeObjectURL(url); resolve(null); }, 8000);
+    video.addEventListener('seeked', () => {
+      clearTimeout(timeout);
+      const c = document.createElement('canvas');
+      c.width = video.videoWidth || 320; c.height = video.videoHeight || 180;
+      c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); resolve(c);
+    }, { once: true });
+    video.addEventListener('loadeddata', () => {
+      video.currentTime = Math.min(1, video.duration * 0.1);
+    }, { once: true });
+    video.addEventListener('error', () => { clearTimeout(timeout); URL.revokeObjectURL(url); resolve(null); }, { once: true });
+    video.src = url;
+  });
+}
+
+function getThumbnailFromImage(blob) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      URL.revokeObjectURL(url); resolve(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.src = url;
+  });
+}
+
+function drawPlaceholder(type, ext) {
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 180;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, 320, 180);
+  ctx.fillStyle = '#555'; ctx.font = '600 14px DM Sans, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(type === 'audio' ? '♪ Audio' : ext.toUpperCase(), 160, 90);
+  return c;
+}
+
+async function generateGrid() {
+  const code = document.getElementById('conceptCode').value.trim();
+  if (!code) return;
+  const visualFiles = currentFiles.filter(f => f.type === 'video' || f.type === 'image');
+  if (!visualFiles.length) return;
+
+  gridBtn.disabled = true; gridBtn.textContent = 'Generating...';
+
+  const THUMB_W = 320, THUMB_H = 180, PAD = 16, LABEL_H = 28, HEADER_H = 56;
+  const COLS = Math.min(4, visualFiles.length);
+  const ROWS = Math.ceil(visualFiles.length / COLS);
+  const totalW = PAD + COLS * (THUMB_W + PAD);
+  const totalH = HEADER_H + PAD + ROWS * (THUMB_H + LABEL_H + PAD);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = totalW; canvas.height = totalH;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, totalW, totalH);
+  ctx.fillStyle = '#e0e0e0'; ctx.font = '600 18px DM Sans, sans-serif'; ctx.textBaseline = 'top';
+  ctx.fillText(`Contact Sheet: ${code}`, PAD, PAD);
+  ctx.fillStyle = '#555'; ctx.font = '400 12px DM Sans, sans-serif';
+  ctx.fillText(`${visualFiles.length} files`, PAD, PAD + 26);
+
+  for (let i = 0; i < visualFiles.length; i++) {
+    const f = visualFiles[i];
+    progressEl.textContent = `Thumbnail ${i + 1} of ${visualFiles.length}...`;
+
+    let thumb = null;
+    try {
+      const data = await currentZip.file(f.path).async('blob');
+      if (f.type === 'video' && BROWSER_VIDEO_EXTS.has(f.ext)) {
+        const mime = f.ext === 'webm' ? 'video/webm' : 'video/mp4';
+        thumb = await getThumbnailFromVideo(new Blob([data], { type: mime }));
+      } else if (f.type === 'image' && BROWSER_IMAGE_EXTS.has(f.ext)) {
+        const mime = f.ext === 'png' ? 'image/png' : f.ext === 'gif' ? 'image/gif' : f.ext === 'webp' ? 'image/webp' : 'image/jpeg';
+        thumb = await getThumbnailFromImage(new Blob([data], { type: mime }));
+      }
+    } catch (e) {}
+    if (!thumb) thumb = drawPlaceholder(f.type, f.ext);
+
+    const col = i % COLS, row = Math.floor(i / COLS);
+    const x = PAD + col * (THUMB_W + PAD);
+    const y = HEADER_H + PAD + row * (THUMB_H + LABEL_H + PAD);
+
+    // Crop-to-fill
+    const srcR = thumb.width / thumb.height, dstR = THUMB_W / THUMB_H;
+    let sw, sh, sx, sy;
+    if (srcR > dstR) { sh = thumb.height; sw = sh * dstR; sx = (thumb.width - sw) / 2; sy = 0; }
+    else { sw = thumb.width; sh = sw / dstR; sx = 0; sy = (thumb.height - sh) / 2; }
+
+    // Rounded corners
+    const r = 4;
+    ctx.save(); ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + THUMB_W - r, y);
+    ctx.quadraticCurveTo(x + THUMB_W, y, x + THUMB_W, y + r);
+    ctx.lineTo(x + THUMB_W, y + THUMB_H - r);
+    ctx.quadraticCurveTo(x + THUMB_W, y + THUMB_H, x + THUMB_W - r, y + THUMB_H);
+    ctx.lineTo(x + r, y + THUMB_H);
+    ctx.quadraticCurveTo(x, y + THUMB_H, x, y + THUMB_H - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath(); ctx.clip();
+    ctx.drawImage(thumb, sx, sy, sw, sh, x, y, THUMB_W, THUMB_H);
+    ctx.restore();
+
+    // Filename label
+    ctx.fillStyle = '#aaa'; ctx.font = '400 11px DM Mono, monospace';
+    ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    let label = f.name;
+    if (ctx.measureText(label).width > THUMB_W) {
+      while (ctx.measureText(label + '...').width > THUMB_W && label.length > 4) label = label.slice(0, -1);
+      label += '...';
+    }
+    ctx.fillText(label, x, y + THUMB_H + 6);
+  }
+
+  progressEl.textContent = '';
+
+  canvas.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `contact-sheet_${code}.png`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    gridBtn.disabled = false; gridBtn.textContent = 'Contact sheet';
+  }, 'image/png');
+}
+</script>
+</body>
+</html>

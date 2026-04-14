@@ -6,100 +6,319 @@
 <title>Shot List</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
+  :root {
+    --bg: #0e0e0e;
+    --surface: #161616;
+    --border: #252525;
+    --text: #e0e0e0;
+    --dim: #666;
+    --faint: #3a3a3a;
+    --accent: #4a9eff;
+    --green: #4aff8b;
+    --radius: 10px;
+  }
+
   body {
     font-family: 'DM Sans', sans-serif;
-    background: #111;
-    color: #e0e0e0;
+    background: var(--bg);
+    color: var(--text);
     min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 40px 20px;
+    padding: 48px 20px;
   }
 
-  h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 6px; }
-  .subtitle { font-size: 13px; color: #777; margin-bottom: 32px; }
+  /* --- Upload view --- */
+  #uploadView {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 520px;
+    margin-top: 80px;
+  }
+  #uploadView h1 {
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 6px;
+  }
+  #uploadView .sub {
+    font-size: 13px; color: var(--dim);
+    margin-bottom: 32px;
+  }
 
   .drop-zone {
-    width: 100%; max-width: 520px;
-    border: 2px dashed #333; border-radius: 12px;
-    padding: 48px 24px; text-align: center; cursor: pointer;
+    width: 100%;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 56px 24px;
+    text-align: center;
+    cursor: pointer;
     transition: border-color 0.2s, background 0.2s;
   }
-  .drop-zone:hover, .drop-zone.dragover { border-color: #4a9eff; background: rgba(74,158,255,0.04); }
-  .drop-zone p { font-size: 14px; color: #888; }
-  .drop-zone p strong { color: #4a9eff; }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(74,158,255,0.03);
+  }
+  .drop-zone p { font-size: 14px; color: var(--dim); }
+  .drop-zone p strong { color: var(--accent); }
   .drop-zone input { display: none; }
-
-  .results { width: 100%; max-width: 520px; margin-top: 24px; display: none; }
-
-  .results-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
-  .results-header h2 { font-size: 14px; font-weight: 500; color: #aaa; }
-
-  .concept-input { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-  .concept-input label { font-size: 13px; color: #777; white-space: nowrap; }
-  .concept-input input {
-    flex: 1; background: #1a1a1a; border: 1px solid #333; border-radius: 6px;
-    padding: 8px 12px; color: #e0e0e0; font-family: 'DM Mono', monospace; font-size: 13px; outline: none;
-  }
-  .concept-input input:focus { border-color: #4a9eff; }
-  .concept-input input::placeholder { color: #555; }
-
-  .shot-list {
-    background: #1a1a1a; border-radius: 8px; padding: 16px;
-    font-family: 'DM Mono', monospace; font-size: 13px; line-height: 1.7;
-    white-space: pre-wrap; word-break: break-all; color: #ccc;
-    max-height: 400px; overflow-y: auto;
+  .upload-status {
+    font-size: 12px; color: var(--dim);
+    margin-top: 12px; min-height: 18px;
   }
 
-  .btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  /* --- Results view --- */
+  #resultsView {
+    display: none;
+    flex-direction: column;
+    width: 100%;
+    max-width: 560px;
+    gap: 0;
+  }
+  #resultsView.active { display: flex; }
+
+  /* top bar */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .top-bar-left {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .top-bar label {
+    font-size: 13px; color: var(--dim); font-weight: 500;
+  }
+  .top-bar input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    width: 120px;
+    outline: none;
+  }
+  .top-bar input:focus { border-color: var(--accent); }
+  .top-bar input::placeholder { color: var(--faint); }
+  .auto-badge {
+    font-size: 10px; color: var(--green);
+    background: rgba(74,255,139,0.08);
+    padding: 2px 6px; border-radius: 3px;
+    font-weight: 600;
+  }
+  .new-zip {
+    font-size: 12px; color: var(--dim);
+    cursor: pointer; text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .new-zip:hover { color: var(--text); }
+  .file-info {
+    font-size: 11px; color: var(--faint);
+    margin-bottom: 16px;
+  }
+
+  /* paste sections */
+  .paste-section {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 16px;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .paste-section.complete { border-color: var(--green); }
+
+  .paste-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+  .paste-label {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .step-num {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--faint);
+    color: var(--bg);
+    font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .paste-section.complete .step-num { background: var(--green); }
+  .paste-title {
+    font-size: 13px; font-weight: 600; color: var(--dim);
+  }
+  .paste-section.complete .paste-title { color: var(--green); }
 
   .btn {
-    background: #222; border: 1px solid #333; color: #ccc;
+    display: inline-flex; align-items: center; gap: 5px;
     padding: 7px 14px; border-radius: 6px;
-    font-family: 'DM Sans', sans-serif; font-size: 12px; font-weight: 500;
-    cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+    border: none; white-space: nowrap;
   }
-  .btn:hover { background: #2a2a2a; border-color: #4a9eff; color: #fff; }
-  .btn.copied { border-color: #4aff8b; color: #4aff8b; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn:disabled:hover { background: #222; border-color: #333; color: #ccc; }
+  .btn-accent {
+    background: var(--accent); color: #000;
+  }
+  .btn-accent:hover { background: #5eadff; }
+  .btn-accent:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-dim {
+    background: #1e1e1e; color: var(--dim);
+    border: 1px solid var(--border);
+  }
+  .btn-dim:hover { border-color: var(--accent); color: var(--text); }
+  .btn-green {
+    background: var(--green); color: #000;
+  }
 
-  .file-name { font-size: 12px; color: #555; margin-top: 12px; text-align: center; }
-  .count { font-size: 12px; color: #555; }
-  .progress { font-size: 12px; color: #4a9eff; margin-top: 8px; min-height: 18px; }
+  /* text block */
+  .text-block {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px; line-height: 1.75;
+    white-space: pre-wrap; word-break: break-all;
+    color: #aaa;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 12px;
+    background: var(--bg);
+    border-radius: 6px;
+  }
+
+  /* thumbnail area */
+  .thumb-area { min-height: 60px; }
+
+  .progress-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .progress-track {
+    flex: 1; height: 4px;
+    background: #1e1e1e; border-radius: 2px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; width: 0%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.3s ease-out;
+  }
+  .progress-fill.done { background: var(--green); }
+  .progress-pct {
+    font-size: 11px; color: var(--dim);
+    width: 32px; text-align: right;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .thumb-preview {
+    display: none;
+    margin-top: 10px;
+  }
+  .thumb-preview.visible { display: block; }
+  .thumb-img-wrap {
+    position: relative;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .thumb-img-wrap img {
+    width: 100%; display: block;
+    -webkit-user-drag: auto;
+  }
+  .drag-tag {
+    position: absolute;
+    bottom: 8px; right: 8px;
+    background: rgba(0,0,0,0.75);
+    color: #aaa;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+
+  .thumb-actions {
+    display: flex; gap: 8px; margin-top: 8px;
+    flex-wrap: wrap;
+  }
 </style>
 </head>
 <body>
 
-<h1>Shot List</h1>
-<p class="subtitle">Drop a project zip to get a list of footage files</p>
-
-<div class="drop-zone" id="dropZone">
-  <p><strong>Click or drag</strong> a .zip file here</p>
-  <input type="file" id="fileInput" accept=".zip">
+<!-- UPLOAD -->
+<div id="uploadView">
+  <h1>Shot List</h1>
+  <p class="sub">Drop a project zip to generate a shot list for Slack</p>
+  <div class="drop-zone" id="dropZone">
+    <p><strong>Click or drag</strong> a .zip here</p>
+    <input type="file" id="fileInput" accept=".zip">
+  </div>
+  <p class="upload-status" id="uploadStatus"></p>
 </div>
 
-<p class="file-name" id="fileName"></p>
-
-<div class="results" id="results">
-  <div class="concept-input">
-    <label>Concept code:</label>
-    <input type="text" id="conceptCode" placeholder="e.g. ABC-001" oninput="updateOutput()">
+<!-- RESULTS -->
+<div id="resultsView">
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <label>Concept</label>
+      <input type="text" id="conceptCode" placeholder="ABC123" oninput="onCodeEdit()">
+      <span class="auto-badge" id="autoBadge" style="display:none">auto</span>
+    </div>
+    <span class="new-zip" onclick="restart()">New zip</span>
   </div>
-  <div class="results-header">
-    <h2>Footage files <span class="count" id="count"></span></h2>
-    <div class="btn-row">
-      <button class="btn" id="gridBtn" onclick="generateGrid()" disabled>Contact sheet</button>
-      <button class="btn" id="copyBtn" onclick="copyList()" disabled>Enter concept code to copy</button>
+  <p class="file-info" id="fileInfo"></p>
+
+  <!-- 1: Text -->
+  <div class="paste-section" id="section1">
+    <div class="paste-header">
+      <div class="paste-label">
+        <div class="step-num">1</div>
+        <span class="paste-title">Copy text into Slack thread</span>
+      </div>
+      <button class="btn btn-accent" id="copyTextBtn" onclick="copyText()">Copy</button>
+    </div>
+    <div class="text-block" id="shotText"></div>
+  </div>
+
+  <!-- 2: Image -->
+  <div class="paste-section" id="section2">
+    <div class="paste-header">
+      <div class="paste-label">
+        <div class="step-num">2</div>
+        <span class="paste-title">Paste thumbnail into same thread</span>
+      </div>
+      <div class="thumb-actions" id="thumbActions" style="display:none">
+        <button class="btn btn-accent" id="copyImgBtn" onclick="copyImage()">Copy image</button>
+        <button class="btn btn-dim" onclick="downloadSheet()">Download</button>
+      </div>
+    </div>
+    <div class="thumb-area">
+      <div class="progress-row" id="progressRow">
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <span class="progress-pct" id="progressPct">0%</span>
+      </div>
+      <div class="thumb-preview" id="thumbPreview">
+        <div class="thumb-img-wrap">
+          <img id="contactImg" alt="Contact sheet">
+          <span class="drag-tag">drag into Slack</span>
+        </div>
+      </div>
     </div>
   </div>
-  <div class="shot-list" id="shotList"></div>
-  <p class="progress" id="progress"></p>
 </div>
 
 <script>
@@ -110,35 +329,45 @@ const IMAGE_EXTS = new Set(['jpg','jpeg','png','tif','tiff','psd','ai','eps','sv
 const BROWSER_IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','svg']);
 const JUNK_FOLDERS = ['auto-save','adobe premiere pro auto-save','previews','encoded','media cache','proxy','proxies','.thumbnails','.cache','__macosx','.ds_store','peak files','conformed audio'];
 const JUNK_PATTERNS = [/^\./, /^~/, /^thumbs\.db$/i, /^desktop\.ini$/i, /\.pkf$/i, /\.pek$/i, /\.cfa$/i, /\.tmp$/i];
-
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
-const results = document.getElementById('results');
-const shotList = document.getElementById('shotList');
-const countEl = document.getElementById('count');
-const fileNameEl = document.getElementById('fileName');
-const copyBtn = document.getElementById('copyBtn');
-const gridBtn = document.getElementById('gridBtn');
-const progressEl = document.getElementById('progress');
+const CODE_RE = /([A-Z]{3})[-_.]?(\d{3})/;
 
 let currentFiles = [];
 let currentZip = null;
+let contactSheetBlob = null;
+let thumbReady = false;
+let gridGenId = 0;
+let textCopied = false;
 
-dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('dragover');
+const $drop = document.getElementById('dropZone');
+const $fileIn = document.getElementById('fileInput');
+const $code = document.getElementById('conceptCode');
+const $badge = document.getElementById('autoBadge');
+const $text = document.getElementById('shotText');
+const $copyText = document.getElementById('copyTextBtn');
+const $copyImg = document.getElementById('copyImgBtn');
+const $img = document.getElementById('contactImg');
+const $fill = document.getElementById('progressFill');
+const $pct = document.getElementById('progressPct');
+const $progRow = document.getElementById('progressRow');
+const $thumbPrev = document.getElementById('thumbPreview');
+const $thumbActs = document.getElementById('thumbActions');
+const $s1 = document.getElementById('section1');
+const $s2 = document.getElementById('section2');
+
+// Upload
+$drop.addEventListener('click', () => $fileIn.click());
+$drop.addEventListener('dragover', e => { e.preventDefault(); $drop.classList.add('dragover'); });
+$drop.addEventListener('dragleave', () => $drop.classList.remove('dragover'));
+$drop.addEventListener('drop', e => {
+  e.preventDefault(); $drop.classList.remove('dragover');
   if (e.dataTransfer.files.length) processZip(e.dataTransfer.files[0]);
 });
-fileInput.addEventListener('change', e => { if (e.target.files.length) processZip(e.target.files[0]); });
+$fileIn.addEventListener('change', e => { if (e.target.files.length) processZip(e.target.files[0]); });
 
 async function processZip(file) {
   if (!file.name.endsWith('.zip')) return;
-  fileNameEl.textContent = file.name;
-  dropZone.querySelector('p').innerHTML = 'Processing...';
-  progressEl.textContent = '';
+  document.getElementById('uploadStatus').textContent = 'Reading...';
+  $drop.querySelector('p').innerHTML = 'Processing...';
 
   try {
     const zip = await JSZip.loadAsync(file);
@@ -147,8 +376,8 @@ async function processZip(file) {
 
     zip.forEach((path, entry) => {
       if (entry.dir) return;
-      const pathLower = path.toLowerCase();
-      if (JUNK_FOLDERS.some(jf => pathLower.includes('/' + jf + '/') || pathLower.startsWith(jf + '/'))) return;
+      const pl = path.toLowerCase();
+      if (JUNK_FOLDERS.some(jf => pl.includes('/' + jf + '/') || pl.startsWith(jf + '/'))) return;
       const name = path.split('/').pop();
       if (JUNK_PATTERNS.some(p => p.test(name))) return;
       const ext = name.split('.').pop().toLowerCase();
@@ -159,80 +388,142 @@ async function processZip(file) {
       if (type) footage.push({ name, type, ext, path });
     });
 
-    const order = { video: 0, audio: 1, image: 2 };
-    footage.sort((a, b) => order[a.type] - order[b.type] || a.name.localeCompare(b.name));
-
-    const seen = new Set();
-    currentFiles = footage.filter(f => {
-      if (seen.has(f.name)) return false;
-      seen.add(f.name);
-      return true;
+    footage.sort((a, b) => {
+      const o = { video: 0, audio: 1, image: 2 };
+      return o[a.type] - o[b.type] || a.name.localeCompare(b.name);
     });
 
-    updateOutput();
-    results.style.display = 'block';
-    dropZone.querySelector('p').innerHTML = '<strong>Click or drag</strong> a .zip file here';
+    const seen = new Set();
+    currentFiles = footage.filter(f => { if (seen.has(f.name)) return false; seen.add(f.name); return true; });
+
+    // Auto-detect concept code
+    let code = '';
+    const zm = file.name.match(CODE_RE);
+    if (zm) {
+      code = zm[1] + zm[2];
+    } else {
+      const folders = new Set();
+      zip.forEach(p => { const s = p.split('/'); if (s.length > 1) folders.add(s[0]); });
+      for (const f of folders) { const m = f.match(CODE_RE); if (m) { code = m[1] + m[2]; break; } }
+    }
+    // Also check footage filenames
+    if (!code) {
+      for (const f of currentFiles) {
+        const m = f.name.match(CODE_RE);
+        if (m) { code = m[1] + m[2]; break; }
+      }
+    }
+
+    $code.value = code;
+    $badge.style.display = code ? 'inline' : 'none';
+
+    const vc = currentFiles.filter(f => f.type === 'video').length;
+    const ac = currentFiles.filter(f => f.type === 'audio').length;
+    const ic = currentFiles.filter(f => f.type === 'image').length;
+    const bits = [];
+    if (vc) bits.push(vc + ' video');
+    if (ac) bits.push(ac + ' audio');
+    if (ic) bits.push(ic + ' image');
+    document.getElementById('fileInfo').textContent = file.name + ' \u00B7 ' + bits.join(', ');
+
+    textCopied = false;
+    thumbReady = false;
+    contactSheetBlob = null;
+    $s1.classList.remove('complete');
+    $s2.classList.remove('complete');
+    $copyText.className = 'btn btn-accent';
+    $copyText.textContent = 'Copy';
+    $thumbActs.style.display = 'none';
+    $thumbPrev.classList.remove('visible');
+    $progRow.style.display = 'flex';
+    $fill.style.width = '0%';
+    $fill.classList.remove('done');
+
+    updateText();
+
+    document.getElementById('uploadView').style.display = 'none';
+    document.getElementById('resultsView').classList.add('active');
+
+    // Start thumbnail generation immediately
+    generateGrid();
+
   } catch (err) {
-    dropZone.querySelector('p').innerHTML = '<strong>Error reading zip.</strong> Try again.';
+    document.getElementById('uploadStatus').textContent = 'Error reading zip.';
+    $drop.querySelector('p').innerHTML = '<strong>Click or drag</strong> a .zip here';
   }
 }
 
-function updateOutput() {
-  const code = document.getElementById('conceptCode').value.trim();
-  const header = code ? `Shots used in ${code}:` : 'Shots used:';
+// Text
+function onCodeEdit() {
+  $badge.style.display = 'none';
+  updateText();
+}
 
+function updateText() {
+  const code = $code.value.trim();
   const video = currentFiles.filter(f => f.type === 'video');
   const audio = currentFiles.filter(f => f.type === 'audio');
   const images = currentFiles.filter(f => f.type === 'image');
+  const hasVis = video.length || images.length;
 
-  let output = header;
-  if (video.length) { output += '\n\nVideo:'; video.forEach(f => output += `\n- ${f.name}`); }
-  if (audio.length) { output += '\n\nAudio:'; audio.forEach(f => output += `\n- ${f.name}`); }
-  if (images.length) { output += '\n\nImages:'; images.forEach(f => output += `\n- ${f.name}`); }
+  let out = `Files Selected | ${code || '[Concept Name]'}`;
+  if (video.length) { out += '\n\nVideo Files:'; video.forEach(f => out += `\n\u2022 ${f.name}`); }
+  if (audio.length) { out += '\n\nAudio Files:'; audio.forEach(f => out += `\n\u2022 ${f.name}`); }
+  if (images.length) { out += '\n\nImage Files:'; images.forEach(f => out += `\n\u2022 ${f.name}`); }
+  if (hasVis) out += '\n\nThumbnail';
 
-  shotList.textContent = output;
-  countEl.textContent = `(${currentFiles.length})`;
-  copyBtn.textContent = code ? 'Copy for Slack' : 'Enter concept code to copy';
-  copyBtn.disabled = !code;
-  copyBtn.classList.remove('copied');
+  $text.textContent = out;
 
-  const hasVisual = currentFiles.some(f => f.type === 'video' || f.type === 'image');
-  gridBtn.disabled = !code || !hasVisual;
+  if (textCopied) {
+    textCopied = false;
+    $s1.classList.remove('complete');
+    $copyText.className = 'btn btn-accent';
+    $copyText.textContent = 'Copy';
+  }
 }
 
-function copyList() {
-  navigator.clipboard.writeText(shotList.textContent).then(() => {
-    copyBtn.textContent = 'Copied';
-    copyBtn.classList.add('copied');
-    setTimeout(() => { copyBtn.textContent = 'Copy for Slack'; copyBtn.classList.remove('copied'); }, 2000);
+function copyText() {
+  navigator.clipboard.writeText($text.textContent).then(() => {
+    textCopied = true;
+    $s1.classList.add('complete');
+    $copyText.className = 'btn btn-green';
+    $copyText.textContent = '\u2713 Copied';
+    setTimeout(() => {
+      $copyText.className = 'btn btn-dim';
+      $copyText.textContent = 'Copy again';
+    }, 2500);
   });
 }
 
-// --- Contact sheet ---
+// Thumbnail progress
+function setProgress(pct) {
+  $fill.style.width = pct + '%';
+  $fill.classList.toggle('done', pct >= 100);
+  $pct.textContent = Math.round(pct) + '%';
+}
 
+// Thumbnail generation
 function getThumbnailFromVideo(blob) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const url = URL.createObjectURL(blob);
-    const video = document.createElement('video');
-    video.muted = true; video.preload = 'auto'; video.playsInline = true;
-    const timeout = setTimeout(() => { URL.revokeObjectURL(url); resolve(null); }, 8000);
-    video.addEventListener('seeked', () => {
-      clearTimeout(timeout);
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'auto'; v.playsInline = true;
+    const t = setTimeout(() => { URL.revokeObjectURL(url); resolve(null); }, 8000);
+    v.addEventListener('seeked', () => {
+      clearTimeout(t);
       const c = document.createElement('canvas');
-      c.width = video.videoWidth || 320; c.height = video.videoHeight || 180;
-      c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+      c.width = v.videoWidth || 320; c.height = v.videoHeight || 180;
+      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url); resolve(c);
     }, { once: true });
-    video.addEventListener('loadeddata', () => {
-      video.currentTime = Math.min(1, video.duration * 0.1);
-    }, { once: true });
-    video.addEventListener('error', () => { clearTimeout(timeout); URL.revokeObjectURL(url); resolve(null); }, { once: true });
-    video.src = url;
+    v.addEventListener('loadeddata', () => { v.currentTime = Math.min(1, v.duration * 0.1); }, { once: true });
+    v.addEventListener('error', () => { clearTimeout(t); URL.revokeObjectURL(url); resolve(null); }, { once: true });
+    v.src = url;
   });
 }
 
 function getThumbnailFromImage(blob) {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onload = () => {
@@ -253,44 +544,49 @@ function drawPlaceholder(type, ext) {
   ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, 320, 180);
   ctx.fillStyle = '#555'; ctx.font = '600 14px DM Sans, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(type === 'audio' ? '♪ Audio' : ext.toUpperCase(), 160, 90);
+  ctx.fillText(type === 'audio' ? '\u266A Audio' : ext.toUpperCase(), 160, 90);
   return c;
 }
 
 async function generateGrid() {
-  const code = document.getElementById('conceptCode').value.trim();
-  if (!code) return;
-  const visualFiles = currentFiles.filter(f => f.type === 'video' || f.type === 'image');
-  if (!visualFiles.length) return;
+  const vis = currentFiles.filter(f => f.type === 'video' || f.type === 'image');
+  if (!vis.length) {
+    thumbReady = true;
+    $progRow.style.display = 'none';
+    $s2.style.display = 'none';
+    return;
+  }
 
-  gridBtn.disabled = true; gridBtn.textContent = 'Generating...';
+  const id = ++gridGenId;
+  setProgress(0);
 
-  const THUMB_W = 320, THUMB_H = 180, PAD = 16, LABEL_H = 28, HEADER_H = 56;
-  const COLS = Math.min(4, visualFiles.length);
-  const ROWS = Math.ceil(visualFiles.length / COLS);
-  const totalW = PAD + COLS * (THUMB_W + PAD);
-  const totalH = HEADER_H + PAD + ROWS * (THUMB_H + LABEL_H + PAD);
+  const TW = 320, TH = 180, PAD = 16, LH = 28, HH = 56;
+  const COLS = Math.min(4, vis.length);
+  const ROWS = Math.ceil(vis.length / COLS);
+  const W = PAD + COLS * (TW + PAD);
+  const H = HH + PAD + ROWS * (TH + LH + PAD);
 
   const canvas = document.createElement('canvas');
-  canvas.width = totalW; canvas.height = totalH;
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, totalW, totalH);
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, W, H);
+  const code = $code.value.trim() || '...';
   ctx.fillStyle = '#e0e0e0'; ctx.font = '600 18px DM Sans, sans-serif'; ctx.textBaseline = 'top';
   ctx.fillText(`Contact Sheet: ${code}`, PAD, PAD);
   ctx.fillStyle = '#555'; ctx.font = '400 12px DM Sans, sans-serif';
-  ctx.fillText(`${visualFiles.length} files`, PAD, PAD + 26);
+  ctx.fillText(`${vis.length} files`, PAD, PAD + 26);
 
-  for (let i = 0; i < visualFiles.length; i++) {
-    const f = visualFiles[i];
-    progressEl.textContent = `Thumbnail ${i + 1} of ${visualFiles.length}...`;
+  for (let i = 0; i < vis.length; i++) {
+    if (id !== gridGenId) return;
+    const f = vis[i];
+    setProgress(((i + 1) / vis.length) * 95);
 
     let thumb = null;
     try {
       const data = await currentZip.file(f.path).async('blob');
       if (f.type === 'video' && BROWSER_VIDEO_EXTS.has(f.ext)) {
-        const mime = f.ext === 'webm' ? 'video/webm' : 'video/mp4';
-        thumb = await getThumbnailFromVideo(new Blob([data], { type: mime }));
+        thumb = await getThumbnailFromVideo(new Blob([data], { type: f.ext === 'webm' ? 'video/webm' : 'video/mp4' }));
       } else if (f.type === 'image' && BROWSER_IMAGE_EXTS.has(f.ext)) {
         const mime = f.ext === 'png' ? 'image/png' : f.ext === 'gif' ? 'image/gif' : f.ext === 'webp' ? 'image/webp' : 'image/jpeg';
         thumb = await getThumbnailFromImage(new Blob([data], { type: mime }));
@@ -299,51 +595,91 @@ async function generateGrid() {
     if (!thumb) thumb = drawPlaceholder(f.type, f.ext);
 
     const col = i % COLS, row = Math.floor(i / COLS);
-    const x = PAD + col * (THUMB_W + PAD);
-    const y = HEADER_H + PAD + row * (THUMB_H + LABEL_H + PAD);
+    const x = PAD + col * (TW + PAD);
+    const y = HH + PAD + row * (TH + LH + PAD);
 
-    // Crop-to-fill
-    const srcR = thumb.width / thumb.height, dstR = THUMB_W / THUMB_H;
+    const sr = thumb.width / thumb.height, dr = TW / TH;
     let sw, sh, sx, sy;
-    if (srcR > dstR) { sh = thumb.height; sw = sh * dstR; sx = (thumb.width - sw) / 2; sy = 0; }
-    else { sw = thumb.width; sh = sw / dstR; sx = 0; sy = (thumb.height - sh) / 2; }
+    if (sr > dr) { sh = thumb.height; sw = sh * dr; sx = (thumb.width - sw) / 2; sy = 0; }
+    else { sw = thumb.width; sh = sw / dr; sx = 0; sy = (thumb.height - sh) / 2; }
 
-    // Rounded corners
     const r = 4;
     ctx.save(); ctx.beginPath();
-    ctx.moveTo(x + r, y); ctx.lineTo(x + THUMB_W - r, y);
-    ctx.quadraticCurveTo(x + THUMB_W, y, x + THUMB_W, y + r);
-    ctx.lineTo(x + THUMB_W, y + THUMB_H - r);
-    ctx.quadraticCurveTo(x + THUMB_W, y + THUMB_H, x + THUMB_W - r, y + THUMB_H);
-    ctx.lineTo(x + r, y + THUMB_H);
-    ctx.quadraticCurveTo(x, y + THUMB_H, x, y + THUMB_H - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.moveTo(x+r,y); ctx.lineTo(x+TW-r,y);
+    ctx.quadraticCurveTo(x+TW,y,x+TW,y+r);
+    ctx.lineTo(x+TW,y+TH-r);
+    ctx.quadraticCurveTo(x+TW,y+TH,x+TW-r,y+TH);
+    ctx.lineTo(x+r,y+TH);
+    ctx.quadraticCurveTo(x,y+TH,x,y+TH-r);
+    ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);
     ctx.closePath(); ctx.clip();
-    ctx.drawImage(thumb, sx, sy, sw, sh, x, y, THUMB_W, THUMB_H);
+    ctx.drawImage(thumb, sx, sy, sw, sh, x, y, TW, TH);
     ctx.restore();
 
-    // Filename label
     ctx.fillStyle = '#aaa'; ctx.font = '400 11px DM Mono, monospace';
     ctx.textBaseline = 'top'; ctx.textAlign = 'left';
     let label = f.name;
-    if (ctx.measureText(label).width > THUMB_W) {
-      while (ctx.measureText(label + '...').width > THUMB_W && label.length > 4) label = label.slice(0, -1);
+    if (ctx.measureText(label).width > TW) {
+      while (ctx.measureText(label + '...').width > TW && label.length > 4) label = label.slice(0, -1);
       label += '...';
     }
-    ctx.fillText(label, x, y + THUMB_H + 6);
+    ctx.fillText(label, x, y + TH + 6);
   }
 
-  progressEl.textContent = '';
+  if (id !== gridGenId) return;
+  setProgress(100);
 
   canvas.toBlob(blob => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `contact-sheet_${code}.png`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    gridBtn.disabled = false; gridBtn.textContent = 'Contact sheet';
+    if (id !== gridGenId) return;
+    contactSheetBlob = blob;
+    thumbReady = true;
+    $img.src = URL.createObjectURL(blob);
+    $progRow.style.display = 'none';
+    $thumbPrev.classList.add('visible');
+    $thumbActs.style.display = 'flex';
   }, 'image/png');
+}
+
+// Image actions
+async function copyImage() {
+  if (!contactSheetBlob) return;
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': contactSheetBlob })]);
+    $s2.classList.add('complete');
+    $copyImg.className = 'btn btn-green';
+    $copyImg.textContent = '\u2713 Copied';
+    setTimeout(() => {
+      $copyImg.className = 'btn btn-accent';
+      $copyImg.textContent = 'Copy image';
+    }, 2500);
+  } catch (e) {
+    downloadSheet();
+    $copyImg.textContent = 'Downloaded';
+    setTimeout(() => { $copyImg.textContent = 'Copy image'; }, 2000);
+  }
+}
+
+function downloadSheet() {
+  if (!contactSheetBlob) return;
+  const code = $code.value.trim() || 'sheet';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(contactSheetBlob);
+  a.download = `contact-sheet_${code}.png`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function restart() {
+  currentFiles = []; currentZip = null;
+  contactSheetBlob = null; thumbReady = false;
+  textCopied = false; gridGenId++;
+  $fileIn.value = ''; $code.value = '';
+  $badge.style.display = 'none';
+  document.getElementById('uploadView').style.display = 'flex';
+  document.getElementById('resultsView').classList.remove('active');
+  $drop.querySelector('p').innerHTML = '<strong>Click or drag</strong> a .zip here';
+  document.getElementById('uploadStatus').textContent = '';
 }
 </script>
 </body>

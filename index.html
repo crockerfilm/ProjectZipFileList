@@ -19,6 +19,7 @@
     --faint: #3a3a3a;
     --accent: #4a9eff;
     --green: #4aff8b;
+    --warn: #ffb84a;
     --radius: 10px;
   }
 
@@ -33,7 +34,6 @@
     padding: 48px 20px;
   }
 
-  /* --- Upload view --- */
   #uploadView {
     display: flex;
     flex-direction: column;
@@ -71,9 +71,11 @@
   .upload-status {
     font-size: 12px; color: var(--dim);
     margin-top: 12px; min-height: 18px;
+    text-align: center;
+    max-width: 100%;
   }
+  .upload-status.warn { color: var(--warn); }
 
-  /* --- Results view --- */
   #resultsView {
     display: none;
     flex-direction: column;
@@ -83,7 +85,6 @@
   }
   #resultsView.active { display: flex; }
 
-  /* top bar */
   .top-bar {
     display: flex;
     align-items: center;
@@ -128,7 +129,6 @@
     margin-bottom: 16px;
   }
 
-  /* paste sections */
   .paste-section {
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -173,9 +173,7 @@
     cursor: pointer; transition: all 0.15s;
     border: none; white-space: nowrap;
   }
-  .btn-accent {
-    background: var(--accent); color: #000;
-  }
+  .btn-accent { background: var(--accent); color: #000; }
   .btn-accent:hover { background: #5eadff; }
   .btn-accent:disabled { opacity: 0.3; cursor: not-allowed; }
   .btn-dim {
@@ -183,11 +181,8 @@
     border: 1px solid var(--border);
   }
   .btn-dim:hover { border-color: var(--accent); color: var(--text); }
-  .btn-green {
-    background: var(--green); color: #000;
-  }
+  .btn-green { background: var(--green); color: #000; }
 
-  /* text block */
   .text-block {
     font-family: 'DM Mono', monospace;
     font-size: 12px; line-height: 1.75;
@@ -200,7 +195,6 @@
     border-radius: 6px;
   }
 
-  /* thumbnail area */
   .thumb-area { min-height: 60px; }
 
   .progress-row {
@@ -224,10 +218,7 @@
     font-family: 'DM Mono', monospace;
   }
 
-  .thumb-preview {
-    display: none;
-    margin-top: 10px;
-  }
+  .thumb-preview { display: none; margin-top: 10px; }
   .thumb-preview.visible { display: block; }
   .thumb-img-wrap {
     position: relative;
@@ -250,16 +241,21 @@
     font-weight: 600;
     pointer-events: none;
   }
-
   .thumb-actions {
     display: flex; gap: 8px; margin-top: 8px;
     flex-wrap: wrap;
   }
+  .warn-note {
+    font-size: 11px;
+    color: var(--warn);
+    margin-top: 8px;
+    display: none;
+  }
+  .warn-note.visible { display: block; }
 </style>
 </head>
 <body>
 
-<!-- UPLOAD -->
 <div id="uploadView">
   <h1>Shot List</h1>
   <p class="sub">Drop a project zip to generate a shot list for Slack</p>
@@ -270,7 +266,6 @@
   <p class="upload-status" id="uploadStatus"></p>
 </div>
 
-<!-- RESULTS -->
 <div id="resultsView">
   <div class="top-bar">
     <div class="top-bar-left">
@@ -282,7 +277,6 @@
   </div>
   <p class="file-info" id="fileInfo"></p>
 
-  <!-- 1: Text -->
   <div class="paste-section" id="section1">
     <div class="paste-header">
       <div class="paste-label">
@@ -294,7 +288,6 @@
     <div class="text-block" id="shotText"></div>
   </div>
 
-  <!-- 2: Image -->
   <div class="paste-section" id="section2">
     <div class="paste-header">
       <div class="paste-label">
@@ -318,43 +311,81 @@
         </div>
       </div>
     </div>
+    <p class="warn-note" id="thumbWarn"></p>
   </div>
 </div>
 
 <script>
-const VIDEO_EXTS = new Set(['mp4','mov','avi','mkv','wmv','flv','webm','m4v','mpg','mpeg','mxf','r3d','braw','ari']);
-const BROWSER_VIDEO_EXTS = new Set(['mp4','mov','webm','m4v','ogg']);
-const AUDIO_EXTS = new Set(['wav','mp3','aac','aif','aiff','flac','ogg','m4a','wma']);
-const IMAGE_EXTS = new Set(['jpg','jpeg','png','tif','tiff','psd','ai','eps','svg','gif','webp','bmp','raw','cr2','nef','dng']);
-const BROWSER_IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','svg']);
-const JUNK_FOLDERS = ['auto-save','adobe premiere pro auto-save','previews','encoded','media cache','proxy','proxies','.thumbnails','.cache','__macosx','.ds_store','peak files','conformed audio'];
-const JUNK_PATTERNS = [/^\./, /^~/, /^thumbs\.db$/i, /^desktop\.ini$/i, /\.pkf$/i, /\.pek$/i, /\.cfa$/i, /\.tmp$/i];
-const CODE_RE = /([A-Z]{3})[-_.]?(\d{3})/;
+/* ═══════════════════════════════════════════════
+   CONFIG
+   ═══════════════════════════════════════════════ */
+const VIDEO_EXTS = new Set(['mp4','mov','avi','mkv','wmv','flv','webm','m4v','mpg','mpeg','mxf','r3d','braw','ari','prores','ts','mts','m2ts','3gp','ogv','divx','vob']);
+const BROWSER_VIDEO_EXTS = new Set(['mp4','webm','m4v','ogg','ogv','mov']);
+const AUDIO_EXTS = new Set(['wav','mp3','aac','aif','aiff','flac','ogg','m4a','wma','opus','ac3','dts']);
+const IMAGE_EXTS = new Set(['jpg','jpeg','png','tif','tiff','psd','ai','eps','svg','gif','webp','bmp','raw','cr2','cr3','nef','dng','arw','orf','rw2','heic','heif','avif','exr','hdr']);
+const BROWSER_IMAGE_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp','svg','avif']);
 
-let currentFiles = [];
-let currentZip = null;
+const JUNK_FOLDERS = new Set([
+  'auto-save','adobe premiere pro auto-save','previews','encoded',
+  'media cache','media cache files','peak files','conformed audio',
+  'proxy','proxies','.thumbnails','.cache','__macosx','.ds_store',
+  'render files','transcoded media','optimized media','analysis files',
+  '.braw_cache','cache','temp','tmp','.tmp','.temp',
+  'after effects auto-save','ae auto-save','davinci resolve',
+  '.resolve','optimizedmedia','cachefiles','.fseventsd',
+  '.spotlight-v100','.trashes','.temporaryitems','node_modules',
+  '.git','.svn','__pycache__','.metadata'
+]);
+
+const JUNK_FILE_RE = [
+  /^\./, /^~/, /^thumbs\.db$/i, /^desktop\.ini$/i,
+  /\.pkf$/i, /\.pek$/i, /\.cfa$/i, /\.tmp$/i,
+  /\.lnk$/i, /\.bak$/i, /\.log$/i,
+  /^\.ds_store$/i, /\.xmp$/i, /\.crdownload$/i, /\.part$/i
+];
+
+const CODE_RE = /([A-Z]{2,6})[-_.\s]?(\d{2,6})/;
+
+const MAX_DECOMPRESS   = 120 * 1024 * 1024;  // 120 MB per-file thumb cap
+const LARGE_ZIP_CUTOFF = 800 * 1024 * 1024;  // 800 MB — skip JSZip, use lightweight parser
+
+/* ═══════════════════════════════════════════════
+   STATE
+   ═══════════════════════════════════════════════ */
+let currentFiles     = [];
+let currentZip       = null;  // JSZip instance (null for large zips)
+let rawFile          = null;  // original File — kept for slice extraction
 let contactSheetBlob = null;
-let thumbReady = false;
-let gridGenId = 0;
-let textCopied = false;
+let thumbReady       = false;
+let gridGenId        = 0;
+let textCopied       = false;
+let usedLightweight  = false;
 
-const $drop = document.getElementById('dropZone');
-const $fileIn = document.getElementById('fileInput');
-const $code = document.getElementById('conceptCode');
-const $badge = document.getElementById('autoBadge');
-const $text = document.getElementById('shotText');
-const $copyText = document.getElementById('copyTextBtn');
-const $copyImg = document.getElementById('copyImgBtn');
-const $img = document.getElementById('contactImg');
-const $fill = document.getElementById('progressFill');
-const $pct = document.getElementById('progressPct');
-const $progRow = document.getElementById('progressRow');
-const $thumbPrev = document.getElementById('thumbPreview');
-const $thumbActs = document.getElementById('thumbActions');
-const $s1 = document.getElementById('section1');
-const $s2 = document.getElementById('section2');
+/* ═══════════════════════════════════════════════
+   DOM
+   ═══════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const $drop      = $('dropZone');
+const $fileIn    = $('fileInput');
+const $code      = $('conceptCode');
+const $badge     = $('autoBadge');
+const $text      = $('shotText');
+const $copyText  = $('copyTextBtn');
+const $copyImg   = $('copyImgBtn');
+const $img       = $('contactImg');
+const $fill      = $('progressFill');
+const $pct       = $('progressPct');
+const $progRow   = $('progressRow');
+const $thumbPrev = $('thumbPreview');
+const $thumbActs = $('thumbActions');
+const $s1        = $('section1');
+const $s2        = $('section2');
+const $status    = $('uploadStatus');
+const $thumbWarn = $('thumbWarn');
 
-// Upload
+/* ═══════════════════════════════════════════════
+   UPLOAD HANDLERS
+   ═══════════════════════════════════════════════ */
 $drop.addEventListener('click', () => $fileIn.click());
 $drop.addEventListener('dragover', e => { e.preventDefault(); $drop.classList.add('dragover'); });
 $drop.addEventListener('dragleave', () => $drop.classList.remove('dragover'));
@@ -364,59 +395,293 @@ $drop.addEventListener('drop', e => {
 });
 $fileIn.addEventListener('change', e => { if (e.target.files.length) processZip(e.target.files[0]); });
 
+/* ═══════════════════════════════════════════════
+   LIGHTWEIGHT CENTRAL DIRECTORY PARSER
+   Reads ~65 KB from the tail of the file to find
+   the End-of-Central-Directory record, then reads
+   just the central directory bytes. Never touches
+   file data. Works on any size zip.
+   ═══════════════════════════════════════════════ */
+function readSlice(file, start, len) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload  = () => resolve(new Uint8Array(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsArrayBuffer(file.slice(start, start + len));
+  });
+}
+function u16(b, o) { return b[o] | (b[o+1] << 8); }
+function u32(b, o) { return (b[o] | (b[o+1] << 8) | (b[o+2] << 16) | (b[o+3] << 24)) >>> 0; }
+function u64(b, o) { return Number(u32(b, o)) + Number(u32(b, o+4)) * 0x100000000; }
+
+async function parseCentralDirectory(file) {
+  const tailSize = Math.min(65557, file.size);
+  const tail = await readSlice(file, file.size - tailSize, tailSize);
+
+  // Find EOCD signature (PK\x05\x06)
+  let eocdOff = -1;
+  for (let i = tail.length - 22; i >= 0; i--) {
+    if (tail[i]===0x50 && tail[i+1]===0x4B && tail[i+2]===0x05 && tail[i+3]===0x06) { eocdOff = i; break; }
+  }
+  if (eocdOff === -1) throw new Error('Not a valid zip (no EOCD)');
+
+  let entryCount = u16(tail, eocdOff + 10);
+  let cdSize     = u32(tail, eocdOff + 12);
+  let cdOffset   = u32(tail, eocdOff + 16);
+
+  // Zip64 check
+  if (cdOffset === 0xFFFFFFFF || cdSize === 0xFFFFFFFF || entryCount === 0xFFFF) {
+    const absEocd = file.size - tailSize + eocdOff;
+    if (absEocd >= 20) {
+      const loc = await readSlice(file, absEocd - 20, 20);
+      if (loc[0]===0x50 && loc[1]===0x4B && loc[2]===0x06 && loc[3]===0x07) {
+        const z64off = u64(loc, 8);
+        const z64 = await readSlice(file, z64off, 56);
+        if (z64[0]===0x50 && z64[1]===0x4B && z64[2]===0x06 && z64[3]===0x06) {
+          entryCount = u64(z64, 32);
+          cdSize     = u64(z64, 40);
+          cdOffset   = u64(z64, 48);
+        }
+      }
+    }
+  }
+
+  // Read central directory
+  const cd = await readSlice(file, cdOffset, cdSize);
+  const entries = [];
+  let p = 0;
+
+  for (let n = 0; n < entryCount && p + 46 <= cd.length; n++) {
+    if (cd[p]!==0x50 || cd[p+1]!==0x4B || cd[p+2]!==0x01 || cd[p+3]!==0x02) break;
+
+    const compMethod  = u16(cd, p+10);
+    const compSz      = u32(cd, p+20);
+    const uncompSz    = u32(cd, p+24);
+    const nameLen     = u16(cd, p+28);
+    const extraLen    = u16(cd, p+30);
+    const commentLen  = u16(cd, p+32);
+    const localOff    = u32(cd, p+42);
+
+    let path;
+    try   { path = new TextDecoder('utf-8').decode(cd.slice(p+46, p+46+nameLen)); }
+    catch { path = String.fromCharCode(...cd.slice(p+46, p+46+nameLen)); }
+
+    const isDir = path.endsWith('/') || path.endsWith('\\');
+
+    // Zip64 extra field
+    let rUncomp = uncompSz, rComp = compSz, rOff = localOff;
+    if (uncompSz===0xFFFFFFFF || compSz===0xFFFFFFFF || localOff===0xFFFFFFFF) {
+      let ep = p + 46 + nameLen;
+      const eEnd = ep + extraLen;
+      while (ep + 4 <= eEnd) {
+        const eid = u16(cd, ep), esz = u16(cd, ep+2);
+        if (eid === 0x0001) {
+          let fo = ep + 4;
+          if (uncompSz===0xFFFFFFFF && fo+8<=eEnd) { rUncomp = u64(cd, fo); fo+=8; }
+          if (compSz===0xFFFFFFFF   && fo+8<=eEnd) { rComp   = u64(cd, fo); fo+=8; }
+          if (localOff===0xFFFFFFFF && fo+8<=eEnd) { rOff    = u64(cd, fo); }
+          break;
+        }
+        ep += 4 + esz;
+      }
+    }
+
+    if (!isDir) {
+      entries.push({
+        path,
+        compressedSize: rComp,
+        uncompressedSize: rUncomp,
+        localHeaderOffset: rOff,
+        compressionMethod: compMethod
+      });
+    }
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+/**
+ * Extract a single file from the raw zip via File.slice().
+ * Handles STORED (method 0) directly, DEFLATED (method 8) via DecompressionStream.
+ */
+async function extractFromRaw(file, entry) {
+  if (entry.uncompressedSize > MAX_DECOMPRESS) return null;
+
+  // Read local header to find data start
+  const lh = await readSlice(file, entry.localHeaderOffset, 30);
+  const lNameLen  = u16(lh, 26);
+  const lExtraLen = u16(lh, 28);
+  const dataStart = entry.localHeaderOffset + 30 + lNameLen + lExtraLen;
+
+  if (entry.compressionMethod === 0) {
+    // STORED — zero-copy slice
+    return file.slice(dataStart, dataStart + entry.uncompressedSize);
+  }
+
+  if (entry.compressionMethod === 8 && typeof DecompressionStream !== 'undefined') {
+    // DEFLATED — use browser's built-in decompressor
+    try {
+      const compBlob = file.slice(dataStart, dataStart + entry.compressedSize);
+      const ds = new DecompressionStream('deflate-raw');
+      const readable = compBlob.stream().pipeThrough(ds);
+      const reader = readable.getReader();
+      const chunks = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+      return new Blob(chunks);
+    } catch (e) {
+      console.warn('DecompressionStream failed:', e.message);
+      return null;
+    }
+  }
+
+  return null;
+}
+
+
+/* ═══════════════════════════════════════════════
+   PATH HELPERS
+   ═══════════════════════════════════════════════ */
+function isJunkPath(pl) {
+  const segs = pl.split('/').filter(Boolean);
+  for (let i = 0; i < segs.length - 1; i++) {
+    if (JUNK_FOLDERS.has(segs[i])) return true;
+    if (segs[i].startsWith('.') && segs[i].length > 1) return true;
+  }
+  return false;
+}
+function isJunkFile(name) { return JUNK_FILE_RE.some(r => r.test(name)); }
+
+function getCommonRoot(paths) {
+  if (!paths.length) return '';
+  const p0 = paths[0].split('/');
+  let d = 0;
+  for (let i = 0; i < p0.length - 1; i++) {
+    const pfx = p0.slice(0, i+1).join('/') + '/';
+    if (paths.every(p => p.startsWith(pfx))) d = i + 1; else break;
+  }
+  return d ? p0.slice(0, d).join('/') + '/' : '';
+}
+
+
+/* ═══════════════════════════════════════════════
+   MAIN PROCESS
+   ═══════════════════════════════════════════════ */
 async function processZip(file) {
-  if (!file.name.endsWith('.zip')) return;
-  document.getElementById('uploadStatus').textContent = 'Reading...';
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    showStatus('Please select a .zip file.', true); return;
+  }
+
+  showStatus('Reading zip...');
   $drop.querySelector('p').innerHTML = 'Processing...';
+  $thumbWarn.classList.remove('visible');
+  rawFile = file;
+  usedLightweight = false;
+  currentZip = null;
 
   try {
-    const zip = await JSZip.loadAsync(file);
-    currentZip = zip;
-    const footage = [];
+    let entries; // [{path, uncompressedSize, compressedSize, compressionMethod, localHeaderOffset, _zipEntry?}]
 
-    zip.forEach((path, entry) => {
-      if (entry.dir) return;
-      const pl = path.toLowerCase();
-      if (JUNK_FOLDERS.some(jf => pl.includes('/' + jf + '/') || pl.startsWith(jf + '/'))) return;
-      const name = path.split('/').pop();
-      if (JUNK_PATTERNS.some(p => p.test(name))) return;
-      const ext = name.split('.').pop().toLowerCase();
+    if (file.size > LARGE_ZIP_CUTOFF) {
+      // ── LARGE ZIP: lightweight central-directory-only parse ──
+      usedLightweight = true;
+      showStatus(`Large zip (${(file.size/1048576).toFixed(0)} MB) — scanning directory...`);
+      entries = await parseCentralDirectory(file);
+    } else {
+      // ── NORMAL ZIP: full JSZip parse ──
+      try {
+        const zip = await JSZip.loadAsync(file);
+        currentZip = zip;
+        entries = [];
+        zip.forEach((path, e) => {
+          if (!e.dir) entries.push({
+            path,
+            uncompressedSize: e._data ? (e._data.uncompressedSize || 0) : 0,
+            compressedSize:   e._data ? (e._data.compressedSize || 0) : 0,
+            compressionMethod: e._data ? (e._data.compressionMethod || 8) : 8,
+            localHeaderOffset: 0,
+            _zipEntry: e
+          });
+        });
+      } catch (e) {
+        // JSZip choked — fall back to lightweight parser
+        console.warn('JSZip failed, falling back:', e.message);
+        usedLightweight = true;
+        currentZip = null;
+        showStatus('Retrying with lightweight parser...');
+        entries = await parseCentralDirectory(file);
+      }
+    }
+
+    if (!entries || !entries.length) {
+      showStatus('Zip appears empty — no files found.', true);
+      resetDropZone(); return;
+    }
+
+    const allPaths = entries.map(e => e.path);
+    const root = getCommonRoot(allPaths);
+
+    const footage = [];
+    let skipped = 0;
+
+    for (const entry of entries) {
+      const rel = root ? entry.path.substring(root.length) : entry.path;
+      const pl = rel.toLowerCase();
+      if (isJunkPath(pl)) { skipped++; continue; }
+
+      const name = rel.split('/').pop();
+      if (!name) { skipped++; continue; }
+      if (isJunkFile(name)) { skipped++; continue; }
+
+      const dot = name.lastIndexOf('.');
+      const ext = dot > 0 ? name.substring(dot + 1).toLowerCase() : '';
+      if (!ext) { skipped++; continue; }
+
       let type = null;
       if (VIDEO_EXTS.has(ext)) type = 'video';
       else if (AUDIO_EXTS.has(ext)) type = 'audio';
       else if (IMAGE_EXTS.has(ext)) type = 'image';
-      if (type) footage.push({ name, type, ext, path });
-    });
+      if (!type) continue;
+
+      footage.push({
+        name, type, ext,
+        path: entry.path,
+        relativePath: rel,
+        uncompressedSize: entry.uncompressedSize || 0,
+        compressedSize: entry.compressedSize || 0,
+        compressionMethod: entry.compressionMethod || 8,
+        localHeaderOffset: entry.localHeaderOffset || 0,
+        _zipEntry: entry._zipEntry || null
+      });
+    }
 
     footage.sort((a, b) => {
       const o = { video: 0, audio: 1, image: 2 };
       return o[a.type] - o[b.type] || a.name.localeCompare(b.name);
     });
 
+    // Dedup by lowercase name
     const seen = new Set();
-    currentFiles = footage.filter(f => { if (seen.has(f.name)) return false; seen.add(f.name); return true; });
-
-    // Auto-detect concept code
-    let code = '';
-    const zm = file.name.match(CODE_RE);
-    if (zm) {
-      code = zm[1] + zm[2];
-    } else {
-      const folders = new Set();
-      zip.forEach(p => { const s = p.split('/'); if (s.length > 1) folders.add(s[0]); });
-      for (const f of folders) { const m = f.match(CODE_RE); if (m) { code = m[1] + m[2]; break; } }
-    }
-    // Also check footage filenames
-    if (!code) {
-      for (const f of currentFiles) {
-        const m = f.name.match(CODE_RE);
-        if (m) { code = m[1] + m[2]; break; }
-      }
+    currentFiles = [];
+    for (const f of footage) {
+      const k = f.name.toLowerCase();
+      if (!seen.has(k)) { seen.add(k); currentFiles.push(f); }
     }
 
+    if (!currentFiles.length) {
+      showStatus(`No media files found (${entries.length} scanned, ${skipped} filtered).`, true);
+      resetDropZone(); return;
+    }
+
+    // Detect concept code
+    const code = detectCode(file.name, allPaths, currentFiles);
     $code.value = code;
     $badge.style.display = code ? 'inline' : 'none';
 
+    // Summary
     const vc = currentFiles.filter(f => f.type === 'video').length;
     const ac = currentFiles.filter(f => f.type === 'audio').length;
     const ic = currentFiles.filter(f => f.type === 'image').length;
@@ -424,13 +689,13 @@ async function processZip(file) {
     if (vc) bits.push(vc + ' video');
     if (ac) bits.push(ac + ' audio');
     if (ic) bits.push(ic + ' image');
-    document.getElementById('fileInfo').textContent = file.name + ' \u00B7 ' + bits.join(', ');
+    $('fileInfo').textContent = `${file.name} \u00B7 ${(file.size/1048576).toFixed(0)} MB \u00B7 ${bits.join(', ')}`;
 
-    textCopied = false;
-    thumbReady = false;
-    contactSheetBlob = null;
+    // Reset UI state
+    textCopied = false; thumbReady = false; contactSheetBlob = null;
     $s1.classList.remove('complete');
     $s2.classList.remove('complete');
+    $s2.style.display = '';
     $copyText.className = 'btn btn-accent';
     $copyText.textContent = 'Copy';
     $thumbActs.style.display = 'none';
@@ -440,40 +705,65 @@ async function processZip(file) {
     $fill.classList.remove('done');
 
     updateText();
-
-    document.getElementById('uploadView').style.display = 'none';
-    document.getElementById('resultsView').classList.add('active');
-
-    // Start thumbnail generation immediately
+    $('uploadView').style.display = 'none';
+    $('resultsView').classList.add('active');
     generateGrid();
 
   } catch (err) {
-    document.getElementById('uploadStatus').textContent = 'Error reading zip.';
-    $drop.querySelector('p').innerHTML = '<strong>Click or drag</strong> a .zip here';
+    console.error('Zip error:', err);
+    let msg = 'Error reading zip.';
+    if (err.message) {
+      if (/not a valid zip|no EOCD/i.test(err.message)) msg = 'Not a valid zip file.';
+      else if (/memory|alloc/i.test(err.message)) msg = 'Out of memory — try closing other tabs.';
+      else msg = 'Error: ' + err.message.substring(0, 120);
+    }
+    showStatus(msg, true);
+    resetDropZone();
   }
 }
 
-// Text
-function onCodeEdit() {
-  $badge.style.display = 'none';
-  updateText();
+function showStatus(msg, warn) {
+  $status.textContent = msg;
+  $status.classList.toggle('warn', !!warn);
 }
+function resetDropZone() {
+  $drop.querySelector('p').innerHTML = '<strong>Click or drag</strong> a .zip here';
+}
+
+function detectCode(zipName, allPaths, files) {
+  let m = zipName.toUpperCase().match(CODE_RE);
+  if (m) return m[1] + m[2];
+  const tops = new Set();
+  for (const p of allPaths) { const s = p.split('/'); if (s.length > 1 && s[0]) tops.add(s[0]); }
+  for (const f of tops) { m = f.toUpperCase().match(CODE_RE); if (m) return m[1] + m[2]; }
+  for (const f of files) { m = f.name.toUpperCase().match(CODE_RE); if (m) return m[1] + m[2]; }
+  for (const f of files) {
+    for (const seg of f.relativePath.split('/').slice(0, -1)) {
+      m = seg.toUpperCase().match(CODE_RE); if (m) return m[1] + m[2];
+    }
+  }
+  return '';
+}
+
+
+/* ═══════════════════════════════════════════════
+   TEXT
+   ═══════════════════════════════════════════════ */
+function onCodeEdit() { $badge.style.display = 'none'; updateText(); }
 
 function updateText() {
   const code = $code.value.trim();
-  const video = currentFiles.filter(f => f.type === 'video');
-  const audio = currentFiles.filter(f => f.type === 'audio');
+  const video  = currentFiles.filter(f => f.type === 'video');
+  const audio  = currentFiles.filter(f => f.type === 'audio');
   const images = currentFiles.filter(f => f.type === 'image');
-  const hasVis = video.length || images.length;
 
   let out = `Files Selected | ${code || '[Concept Name]'}`;
-  if (video.length) { out += '\n\nVideo Files:'; video.forEach(f => out += `\n\u2022 ${f.name}`); }
-  if (audio.length) { out += '\n\nAudio Files:'; audio.forEach(f => out += `\n\u2022 ${f.name}`); }
+  if (video.length)  { out += '\n\nVideo Files:';  video.forEach(f  => out += `\n\u2022 ${f.name}`); }
+  if (audio.length)  { out += '\n\nAudio Files:';  audio.forEach(f  => out += `\n\u2022 ${f.name}`); }
   if (images.length) { out += '\n\nImage Files:'; images.forEach(f => out += `\n\u2022 ${f.name}`); }
-  if (hasVis) out += '\n\nThumbnail';
+  if (video.length || images.length) out += '\n\nThumbnail';
 
   $text.textContent = out;
-
   if (textCopied) {
     textCopied = false;
     $s1.classList.remove('complete');
@@ -488,66 +778,124 @@ function copyText() {
     $s1.classList.add('complete');
     $copyText.className = 'btn btn-green';
     $copyText.textContent = '\u2713 Copied';
-    setTimeout(() => {
-      $copyText.className = 'btn btn-dim';
-      $copyText.textContent = 'Copy again';
-    }, 2500);
+    setTimeout(() => { $copyText.className = 'btn btn-dim'; $copyText.textContent = 'Copy again'; }, 2500);
   });
 }
 
-// Thumbnail progress
+
+/* ═══════════════════════════════════════════════
+   THUMBNAIL HELPERS
+   ═══════════════════════════════════════════════ */
 function setProgress(pct) {
   $fill.style.width = pct + '%';
   $fill.classList.toggle('done', pct >= 100);
   $pct.textContent = Math.round(pct) + '%';
 }
 
-// Thumbnail generation
-function getThumbnailFromVideo(blob) {
+function thumbFromVideo(blob) {
   return new Promise(resolve => {
     const url = URL.createObjectURL(blob);
     const v = document.createElement('video');
     v.muted = true; v.preload = 'auto'; v.playsInline = true;
-    const t = setTimeout(() => { URL.revokeObjectURL(url); resolve(null); }, 8000);
-    v.addEventListener('seeked', () => {
+    const timeout = Math.max(10000, Math.min(30000, blob.size / 100000));
+    const t = setTimeout(() => { cleanup(); resolve(null); }, timeout);
+
+    function cleanup() {
       clearTimeout(t);
-      const c = document.createElement('canvas');
-      c.width = v.videoWidth || 320; c.height = v.videoHeight || 180;
-      c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(url); resolve(c);
+      URL.revokeObjectURL(url);
+      try { v.removeAttribute('src'); v.load(); } catch(e){}
+    }
+    v.addEventListener('seeked', () => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = v.videoWidth || 320; c.height = v.videoHeight || 180;
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        cleanup(); resolve(c);
+      } catch(e) { cleanup(); resolve(null); }
     }, { once: true });
-    v.addEventListener('loadeddata', () => { v.currentTime = Math.min(1, v.duration * 0.1); }, { once: true });
-    v.addEventListener('error', () => { clearTimeout(t); URL.revokeObjectURL(url); resolve(null); }, { once: true });
+    v.addEventListener('loadedmetadata', () => {
+      try { v.currentTime = Math.min(1, v.duration * 0.1); }
+      catch(e) { cleanup(); resolve(null); }
+    }, { once: true });
+    v.addEventListener('error', () => { cleanup(); resolve(null); }, { once: true });
     v.src = url;
   });
 }
 
-function getThumbnailFromImage(blob) {
+function thumbFromImage(blob) {
   return new Promise(resolve => {
     const url = URL.createObjectURL(blob);
     const img = new Image();
+    const t = setTimeout(() => { URL.revokeObjectURL(url); resolve(null); }, 15000);
     img.onload = () => {
-      const c = document.createElement('canvas');
-      c.width = img.naturalWidth; c.height = img.naturalHeight;
-      c.getContext('2d').drawImage(img, 0, 0);
-      URL.revokeObjectURL(url); resolve(c);
+      clearTimeout(t);
+      try {
+        const c = document.createElement('canvas');
+        const max = 3840;
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (w > max || h > max) { const s = max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url); resolve(c);
+      } catch(e) { URL.revokeObjectURL(url); resolve(null); }
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.onerror = () => { clearTimeout(t); URL.revokeObjectURL(url); resolve(null); };
     img.src = url;
   });
 }
 
-function drawPlaceholder(type, ext) {
+function placeholder(type, ext, reason) {
   const c = document.createElement('canvas');
   c.width = 320; c.height = 180;
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#1a1a1a'; ctx.fillRect(0, 0, 320, 180);
-  ctx.fillStyle = '#555'; ctx.font = '600 14px DM Sans, sans-serif';
+  ctx.fillStyle = '#555'; ctx.font = '600 13px DM Sans, sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(type === 'audio' ? '\u266A Audio' : ext.toUpperCase(), 160, 90);
+  let label = type === 'audio' ? '\u266A ' + ext.toUpperCase() : ext.toUpperCase();
+  if (reason === 'too-large')   label += ' \u2022 too large for preview';
+  if (reason === 'unsupported') label += ' \u2022 no browser preview';
+  if (reason === 'extract-fail') label += ' \u2022 compressed';
+  ctx.fillText(label, 160, 90);
   return c;
 }
 
+const VMIME = { mp4:'video/mp4', webm:'video/webm', m4v:'video/mp4', ogg:'video/ogg', ogv:'video/ogg', mov:'video/quicktime' };
+const IMIME = { png:'image/png', gif:'image/gif', webp:'image/webp', bmp:'image/bmp', svg:'image/svg+xml', avif:'image/avif', jpg:'image/jpeg', jpeg:'image/jpeg' };
+
+/**
+ * Get blob for a file — JSZip path or raw-slice path
+ */
+async function getBlob(f) {
+  // JSZip path
+  if (currentZip) {
+    // Direct lookup
+    let entry = currentZip.file(f.path);
+    if (!entry) {
+      // Fuzzy: case-insensitive
+      const norm = f.path.toLowerCase().replace(/\\/g, '/');
+      currentZip.forEach((p, e) => {
+        if (!entry && !e.dir && p.toLowerCase().replace(/\\/g, '/') === norm) entry = e;
+      });
+    }
+    if (!entry) {
+      // Fuzzy: filename only
+      const target = f.name.toLowerCase();
+      currentZip.forEach((p, e) => {
+        if (!entry && !e.dir && p.split('/').pop().toLowerCase() === target) entry = e;
+      });
+    }
+    if (entry) return await entry.async('blob');
+  }
+
+  // Raw extraction path (large zips)
+  if (rawFile) return await extractFromRaw(rawFile, f);
+  return null;
+}
+
+
+/* ═══════════════════════════════════════════════
+   GRID GENERATION
+   ═══════════════════════════════════════════════ */
 async function generateGrid() {
   const vis = currentFiles.filter(f => f.type === 'video' || f.type === 'image');
   if (!vis.length) {
@@ -559,6 +907,7 @@ async function generateGrid() {
 
   const id = ++gridGenId;
   setProgress(0);
+  let skippedCount = 0;
 
   const TW = 320, TH = 180, PAD = 16, LH = 28, HH = 56;
   const COLS = Math.min(4, vis.length);
@@ -583,17 +932,41 @@ async function generateGrid() {
     setProgress(((i + 1) / vis.length) * 95);
 
     let thumb = null;
-    try {
-      const data = await currentZip.file(f.path).async('blob');
-      if (f.type === 'video' && BROWSER_VIDEO_EXTS.has(f.ext)) {
-        thumb = await getThumbnailFromVideo(new Blob([data], { type: f.ext === 'webm' ? 'video/webm' : 'video/mp4' }));
-      } else if (f.type === 'image' && BROWSER_IMAGE_EXTS.has(f.ext)) {
-        const mime = f.ext === 'png' ? 'image/png' : f.ext === 'gif' ? 'image/gif' : f.ext === 'webp' ? 'image/webp' : 'image/jpeg';
-        thumb = await getThumbnailFromImage(new Blob([data], { type: mime }));
-      }
-    } catch (e) {}
-    if (!thumb) thumb = drawPlaceholder(f.type, f.ext);
+    let reason = '';
 
+    try {
+      // Gate 1: size check
+      if (f.uncompressedSize > MAX_DECOMPRESS) {
+        reason = 'too-large'; skippedCount++;
+      }
+      // Gate 2: browser-renderable?
+      else if (f.type === 'video' && !BROWSER_VIDEO_EXTS.has(f.ext)) {
+        reason = 'unsupported'; skippedCount++;
+      }
+      else if (f.type === 'image' && !BROWSER_IMAGE_EXTS.has(f.ext)) {
+        reason = 'unsupported'; skippedCount++;
+      }
+      else {
+        const blob = await getBlob(f);
+        if (blob && blob.size > 0) {
+          if (f.type === 'video') {
+            const mime = VMIME[f.ext] || 'video/mp4';
+            thumb = await thumbFromVideo(new Blob([blob], { type: mime }));
+          } else {
+            const mime = IMIME[f.ext] || 'image/jpeg';
+            thumb = await thumbFromImage(new Blob([blob], { type: mime }));
+          }
+        }
+        if (!thumb) { reason = 'extract-fail'; skippedCount++; }
+      }
+    } catch (e) {
+      console.warn(`Thumb error [${f.name}]:`, e.message || e);
+      reason = 'extract-fail'; skippedCount++;
+    }
+
+    if (!thumb) thumb = placeholder(f.type, f.ext, reason);
+
+    // Draw tile
     const col = i % COLS, row = Math.floor(i / COLS);
     const x = PAD + col * (TW + PAD);
     const y = HH + PAD + row * (TH + LH + PAD);
@@ -625,10 +998,18 @@ async function generateGrid() {
       label += '...';
     }
     ctx.fillText(label, x, y + TH + 6);
+
+    // Yield to UI
+    if (i < vis.length - 1) await new Promise(r => setTimeout(r, 10));
   }
 
   if (id !== gridGenId) return;
   setProgress(100);
+
+  if (skippedCount > 0) {
+    $thumbWarn.textContent = `${skippedCount} file${skippedCount > 1 ? 's' : ''} shown as placeholders (too large, unsupported codec, or compressed).`;
+    $thumbWarn.classList.add('visible');
+  }
 
   canvas.toBlob(blob => {
     if (id !== gridGenId) return;
@@ -641,7 +1022,10 @@ async function generateGrid() {
   }, 'image/png');
 }
 
-// Image actions
+
+/* ═══════════════════════════════════════════════
+   IMAGE ACTIONS
+   ═══════════════════════════════════════════════ */
 async function copyImage() {
   if (!contactSheetBlob) return;
   try {
@@ -649,10 +1033,7 @@ async function copyImage() {
     $s2.classList.add('complete');
     $copyImg.className = 'btn btn-green';
     $copyImg.textContent = '\u2713 Copied';
-    setTimeout(() => {
-      $copyImg.className = 'btn btn-accent';
-      $copyImg.textContent = 'Copy image';
-    }, 2500);
+    setTimeout(() => { $copyImg.className = 'btn btn-accent'; $copyImg.textContent = 'Copy image'; }, 2500);
   } catch (e) {
     downloadSheet();
     $copyImg.textContent = 'Downloaded';
@@ -671,15 +1052,17 @@ function downloadSheet() {
 }
 
 function restart() {
-  currentFiles = []; currentZip = null;
+  currentFiles = []; currentZip = null; rawFile = null;
   contactSheetBlob = null; thumbReady = false;
-  textCopied = false; gridGenId++;
+  textCopied = false; gridGenId++; usedLightweight = false;
   $fileIn.value = ''; $code.value = '';
   $badge.style.display = 'none';
-  document.getElementById('uploadView').style.display = 'flex';
-  document.getElementById('resultsView').classList.remove('active');
+  $thumbWarn.classList.remove('visible');
+  $status.classList.remove('warn');
+  $('uploadView').style.display = 'flex';
+  $('resultsView').classList.remove('active');
   $drop.querySelector('p').innerHTML = '<strong>Click or drag</strong> a .zip here';
-  document.getElementById('uploadStatus').textContent = '';
+  $status.textContent = '';
 }
 </script>
 </body>

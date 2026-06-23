@@ -124,6 +124,34 @@
     text-underline-offset: 3px;
   }
   .new-zip:hover { color: var(--text); }
+  .top-bar-right {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .seq-toggle {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--dim);
+    cursor: pointer; user-select: none;
+  }
+  .seq-toggle:hover { color: var(--text); }
+  .seq-toggle input {
+    appearance: none; -webkit-appearance: none;
+    width: 30px; height: 17px; border-radius: 9px;
+    background: #1e1e1e; border: 1px solid var(--border);
+    position: relative; cursor: pointer; flex-shrink: 0;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .seq-toggle input::after {
+    content: ''; position: absolute;
+    top: 1px; left: 1px; width: 13px; height: 13px;
+    border-radius: 50%; background: var(--dim);
+    transition: transform 0.15s, background 0.15s;
+  }
+  .seq-toggle input:checked {
+    background: rgba(74,255,139,0.12); border-color: var(--green);
+  }
+  .seq-toggle input:checked::after {
+    transform: translateX(13px); background: var(--green);
+  }
   .file-info {
     font-size: 11px; color: var(--faint);
     margin-bottom: 16px;
@@ -273,7 +301,13 @@
       <input type="text" id="conceptCode" placeholder="ABC123" oninput="onCodeEdit()">
       <span class="auto-badge" id="autoBadge" style="display:none">auto</span>
     </div>
-    <span class="new-zip" onclick="restart()">New zip</span>
+    <div class="top-bar-right">
+      <label class="seq-toggle" title="A numbered render/frame folder (comp_0001.exr … comp_0240.exr) gets listed as one line instead of every frame">
+        <input type="checkbox" id="collapseSeqToggle" checked onchange="onCollapseToggle()">
+        <span>List image sequences as one line</span>
+      </label>
+      <span class="new-zip" onclick="restart()">New zip</span>
+    </div>
   </div>
   <p class="file-info" id="fileInfo"></p>
 
@@ -349,6 +383,18 @@ const CODE_RE = /([A-Z]{2,6})[-_.\s]?(\d{2,6})/;
 const MAX_DECOMPRESS   = 120 * 1024 * 1024;  // 120 MB per-file thumb cap
 const LARGE_ZIP_CUTOFF = 800 * 1024 * 1024;  // 800 MB — skip JSZip, use lightweight parser
 
+/* Image-sequence collapsing.
+   A group is treated as a sequence ONLY if every guard passes:
+     - same folder, same prefix, same extension (images only)
+     - >= SEQ_MIN_FRAMES members
+     - trailing frame numbers packed into their range at >= SEQ_MIN_DENSITY
+   The density guard is what keeps coincidentally-numbered deliverables
+   (banner_300x250, ad_1080/ad_1920, logo_v1/v2, etc.) from collapsing —
+   those are sparse and/or differently-prefixed, so they never qualify. */
+const COLLAPSE_SEQ_DEFAULT = true;
+const SEQ_MIN_FRAMES  = 10;   // need at least this many frames to count as a sequence
+const SEQ_MIN_DENSITY = 0.5;  // >= half the numeric range must be present (tolerates dropped frames)
+
 /* ═══════════════════════════════════════════════
    STATE
    ═══════════════════════════════════════════════ */
@@ -360,6 +406,8 @@ let thumbReady       = false;
 let gridGenId        = 0;
 let textCopied       = false;
 let usedLightweight  = false;
+let collapseSequences = COLLAPSE_SEQ_DEFAULT;
+let lastFileMeta     = null;  // { name, size } — kept so the summary can rebuild on toggle
 
 /* ═══════════════════════════════════════════════
    DOM
@@ -568,6 +616,102 @@ function getCommonRoot(paths) {
 
 
 /* ═══════════════════════════════════════════════
+   IMAGE SEQUENCE DETECTION
+   ═══════════════════════════════════════════════ */
+function dirOf(rel) {
+  const i = rel.lastIndexOf('/');
+  return i === -1 ? '' : rel.substring(0, i + 1);
+}
+
+/* Pull a trailing frame counter off a filename's stem.
+   "comp_v2.0048.exr" -> { prefix:"comp_v2.", num:48, width:4 }
+   Returns null when the name has no trailing digit run. */
+function parseFrame(name) {
+  const dot  = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.substring(0, dot) : name;
+  const m = stem.match(/^(.*?)(\d+)$/);
+  if (!m) return null;
+  return { prefix: m[1], num: parseInt(m[2], 10), width: m[2].length };
+}
+
+/* Find genuine image sequences in a file list. Conservative by design:
+   groups by folder + prefix + extension, then requires both a frame-count
+   floor AND a packed numeric range. Sparse or thinly-numbered sets (size
+   variants, version bumps, a handful of stills) never qualify. */
+function detectSequences(files) {
+  const groups = new Map();
+  for (const f of files) {
+    if (f.type !== 'image') continue;        // images only — never touch video/audio
+    const fr = parseFrame(f.name);
+    if (!fr) continue;
+    const dir = dirOf(f.relativePath || f.path);
+    const key = dir + '\u0000' + fr.prefix.toLowerCase() + '\u0000' + f.ext;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ file: f, frame: fr });
+  }
+
+  const sequences = [];
+  for (const arr of groups.values()) {
+    if (arr.length < SEQ_MIN_FRAMES) continue;            // too few to be a render
+    const nums = arr.map(a => a.frame.num);
+    const min = Math.min(...nums), max = Math.max(...nums);
+    const span = max - min + 1;
+    if (arr.length / span < SEQ_MIN_DENSITY) continue;    // sparse -> not a sequence
+    arr.sort((a, b) => a.frame.num - b.frame.num);
+    sequences.push({
+      members: arr.map(a => a.file),
+      rep: arr[Math.floor(arr.length / 2)].file,          // middle frame = better thumbnail
+      count: arr.length,
+      min, max,
+      prefix: arr[0].frame.prefix,
+      ext: arr[0].file.ext,
+      width: arr[0].frame.width
+    });
+  }
+  return sequences;
+}
+
+/* The list actually shown/counted. With collapsing on, each sequence's
+   members are replaced by one representative entry; everything else passes
+   through untouched. currentFiles always stays the full, real list. */
+function getDisplayFiles() {
+  if (!collapseSequences) return currentFiles;
+  const seqs = detectSequences(currentFiles);
+  if (!seqs.length) return currentFiles;
+
+  const repToSeq  = new Map();
+  const memberSet = new Set();
+  for (const s of seqs) {
+    repToSeq.set(s.rep, s);
+    for (const m of s.members) memberSet.add(m);
+  }
+
+  const out = [];
+  for (const f of currentFiles) {
+    if (repToSeq.has(f)) {
+      const s = repToSeq.get(f);
+      const pad = n => String(n).padStart(s.width, '0');
+      out.push({
+        ...f,
+        isSequence: true,
+        seqCount: s.count,
+        seqLabel: `${s.prefix}[${'#'.repeat(s.width)}].${s.ext}`,
+        seqRange: `${pad(s.min)}\u2013${pad(s.max)}`
+      });
+    } else if (!memberSet.has(f)) {
+      out.push(f);                                         // ordinary file
+    }
+    // non-rep sequence members are dropped from the display list
+  }
+  return out;
+}
+
+function sequenceCount() {
+  return collapseSequences ? detectSequences(currentFiles).length : 0;
+}
+
+
+/* ═══════════════════════════════════════════════
    MAIN PROCESS
    ═══════════════════════════════════════════════ */
 async function processZip(file) {
@@ -682,14 +826,8 @@ async function processZip(file) {
     $badge.style.display = code ? 'inline' : 'none';
 
     // Summary
-    const vc = currentFiles.filter(f => f.type === 'video').length;
-    const ac = currentFiles.filter(f => f.type === 'audio').length;
-    const ic = currentFiles.filter(f => f.type === 'image').length;
-    const bits = [];
-    if (vc) bits.push(vc + ' video');
-    if (ac) bits.push(ac + ' audio');
-    if (ic) bits.push(ic + ' image');
-    $('fileInfo').textContent = `${file.name} \u00B7 ${(file.size/1048576).toFixed(0)} MB \u00B7 ${bits.join(', ')}`;
+    lastFileMeta = { name: file.name, size: file.size };
+    updateSummary();
 
     // Reset UI state
     textCopied = false; thumbReady = false; contactSheetBlob = null;
@@ -751,16 +889,59 @@ function detectCode(zipName, allPaths, files) {
    ═══════════════════════════════════════════════ */
 function onCodeEdit() { $badge.style.display = 'none'; updateText(); }
 
+function updateSummary() {
+  if (!lastFileMeta) return;
+  const files = getDisplayFiles();
+  const vc = files.filter(f => f.type === 'video').length;
+  const ac = files.filter(f => f.type === 'audio').length;
+  const ic = files.filter(f => f.type === 'image').length;
+  const bits = [];
+  if (vc) bits.push(vc + ' video');
+  if (ac) bits.push(ac + ' audio');
+  if (ic) bits.push(ic + ' image');
+  const seqN = sequenceCount();
+  if (seqN) bits.push(`${seqN} sequence${seqN > 1 ? 's' : ''} collapsed`);
+  $('fileInfo').textContent =
+    `${lastFileMeta.name} \u00B7 ${(lastFileMeta.size/1048576).toFixed(0)} MB \u00B7 ${bits.join(', ')}`;
+}
+
+function onCollapseToggle() {
+  collapseSequences = $('collapseSeqToggle').checked;
+  refreshDisplay();
+}
+
+/* Rebuild text + summary + contact sheet after the toggle flips. */
+function refreshDisplay() {
+  updateSummary();
+  updateText();
+  thumbReady = false; contactSheetBlob = null;
+  $s2.classList.remove('complete');
+  $thumbActs.style.display = 'none';
+  $thumbPrev.classList.remove('visible');
+  $thumbWarn.classList.remove('visible');
+  $progRow.style.display = 'flex';
+  $fill.style.width = '0%'; $fill.classList.remove('done');
+  generateGrid();
+}
+
 function updateText() {
   const code = $code.value.trim();
-  const video  = currentFiles.filter(f => f.type === 'video');
-  const audio  = currentFiles.filter(f => f.type === 'audio');
-  const images = currentFiles.filter(f => f.type === 'image');
+  const files  = getDisplayFiles();
+  const video  = files.filter(f => f.type === 'video');
+  const audio  = files.filter(f => f.type === 'audio');
+  const images = files.filter(f => f.type === 'image');
 
   let out = `Files Selected | ${code || '[Concept Name]'}`;
   if (video.length)  { out += '\n\nVideo Files:';  video.forEach(f  => out += `\n\u2022 ${f.name}`); }
   if (audio.length)  { out += '\n\nAudio Files:';  audio.forEach(f  => out += `\n\u2022 ${f.name}`); }
-  if (images.length) { out += '\n\nImage Files:'; images.forEach(f => out += `\n\u2022 ${f.name}`); }
+  if (images.length) {
+    out += '\n\nImage Files:';
+    images.forEach(f => {
+      out += f.isSequence
+        ? `\n\u2022 ${f.seqLabel} \u00B7 ${f.seqCount} frames (${f.seqRange})`
+        : `\n\u2022 ${f.name}`;
+    });
+  }
   if (video.length || images.length) out += '\n\nThumbnail';
 
   $text.textContent = out;
@@ -897,7 +1078,7 @@ async function getBlob(f) {
    GRID GENERATION
    ═══════════════════════════════════════════════ */
 async function generateGrid() {
-  const vis = currentFiles.filter(f => f.type === 'video' || f.type === 'image');
+  const vis = getDisplayFiles().filter(f => f.type === 'video' || f.type === 'image');
   if (!vis.length) {
     thumbReady = true;
     $progRow.style.display = 'none';
@@ -992,7 +1173,7 @@ async function generateGrid() {
 
     ctx.fillStyle = '#aaa'; ctx.font = '400 11px DM Mono, monospace';
     ctx.textBaseline = 'top'; ctx.textAlign = 'left';
-    let label = f.name;
+    let label = f.isSequence ? `${f.seqLabel} \u00D7${f.seqCount}` : f.name;
     if (ctx.measureText(label).width > TW) {
       while (ctx.measureText(label + '...').width > TW && label.length > 4) label = label.slice(0, -1);
       label += '...';
@@ -1055,6 +1236,8 @@ function restart() {
   currentFiles = []; currentZip = null; rawFile = null;
   contactSheetBlob = null; thumbReady = false;
   textCopied = false; gridGenId++; usedLightweight = false;
+  collapseSequences = COLLAPSE_SEQ_DEFAULT; lastFileMeta = null;
+  $('collapseSeqToggle').checked = COLLAPSE_SEQ_DEFAULT;
   $fileIn.value = ''; $code.value = '';
   $badge.style.display = 'none';
   $thumbWarn.classList.remove('visible');
